@@ -1,65 +1,91 @@
-from pygame import *
+import pygame
 
-MOVE_SPEED = 7
-WIDTH = 22
+WIDTH = 32
 HEIGHT = 32
-COLOR = (0, 0, 0)
-JUMP_POWER = 10
-GRAVITY = 0.35 # Сила, которая будет тянуть нас вниз
+GRAVITY = 313.6 # Сила, которая будет тянуть нас вниз
 
-class Player(sprite.Sprite):
-    def __init__(self, x, y):
-        sprite.Sprite.__init__(self)
-        self.xvel = 0  # скорость перемещения. 0 - стоять на месте
-        self.startX = x  # Начальная позиция Х, пригодится когда будем переигрывать уровень
-        self.startY = y
-        self.image = Surface((WIDTH, HEIGHT))
-        self.image.fill(COLOR)
-        self.rect = Rect(x, y, WIDTH, HEIGHT)  # прямоугольный объект
-        self.yvel = 0  # скорость вертикального перемещения
-        self.onGround = False  # На земле ли я?
+class Player1(pygame.sprite.Sprite):
+    def __init__(self, x, y, orientation):
+        pygame.sprite.Sprite.__init__(self)
+        self.dx = self.dy = 0                                             # скорость перемещения по координатам
+        self.onGround = False                                             # На земле ли я?
+        self.orientation = orientation                                    # персонаж смотрит влево или вправо?
+        self.image = pygame.image.load("Cubes/AnimationRight/cube1.png")  # загрузка картинки
+        self.rect = pygame.Rect(x, y, WIDTH, HEIGHT)                      # прямоугольный объект
+        self.currentFrame = 1.0                                           # номер текущего кадра анимации
 
-    def update(self, left, right, up, platforms):
-        if up:
-            if self.onGround:  # прыгаем, только когда можем оттолкнуться от земли
-                self.yvel = -JUMP_POWER
+    def update(self, t, platforms):
+        self.keyboard()
 
-        if left:
-            self.xvel = -MOVE_SPEED  # Лево = x- n
+        self.rect.x += self.dx * t             # перемещение по Х
+        self.collision(self.dx, 0, platforms)  # проверка на столкновение
 
-        if right:
-            self.xvel = MOVE_SPEED  # Право = x + n
+        if not self.onGround: self.dy = self.dy +  GRAVITY * t    # если мы не на земле, то изменяем скорость
+        self.rect.y += self.dy * t                                # перемещение по У
+        self.onGround = False
+        self.collision(0, self.dy, platforms)  # проверка на столкновение
+
+        self.dx = 0  # Обнуление скорости
+
+        #--- Анимация ---#
+        self.currentFrame += t*2                # тут можна регулировать скорость анимации, t*2 ускоряет в 2 раза
+        if self.currentFrame >= 5: self.currentFrame = 1.0    # если номер кадра больше 5, то устанавливаем в начало
+
+        if self.orientation == "right":         # смотрит вправо -- загружем нужную картинку
+            self.image = pygame.image.load("Cubes/AnimationRight/cube"+str(int(self.currentFrame))+".png")
+        elif self.orientation == "left":
+            self.image = pygame.image.load("Cubes/AnimationLeft/cube"+str(int(self.currentFrame))+".png")
 
 
-        if not (left or right):  # стоим, когда нет указаний идти
-            self.xvel = 0
 
-        if not self.onGround:
-            self.yvel += GRAVITY
+    # ---***--- Обработка событий клавиатуры ---***---#
+    def keyboard(self):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT]:
+            self.dx = -256               # если зажата кнопка, то заем скорость
+            self.orientation = "left"    # кнопка влево -- персонаж смотрит влево
+        if keys[pygame.K_RIGHT]:
+            self.dx = 256
+            self.orientation = "right"
+        if keys[pygame.K_UP] and self.onGround:
+            self.dy = -260               # задаем начальную скорость прижка
+            self.onGround = False        # теперь персонаж не на земле
 
-        self.onGround = False;  # Мы не знаем, когда мы на земле :(
 
-        self.rect.y += self.yvel #переносим свои положение на yvel с учетом платформ
-        self.collide(0, self.yvel, platforms)
-
-        self.rect.x += self.xvel  # переносим свои положение на xvel с учетом платформ
-        self.collide(self.xvel, 0, platforms)
-
-    def collide(self, xvel, yvel, platforms):
+    # ---***--- Метод проверки на столкновение с картой ---***---#
+    def collision(self, dx, dy, platforms):
         for p in platforms:
-            if sprite.collide_rect(self, p):  # если есть пересечение платформы с игроком
+            if pygame.sprite.collide_rect(self, p):   # если есть пересечение платформы с игроком
+                if dx > 0:                                     # если движется вправо
+                    self.rect.x = p.rect.x - self.rect.width   # останавливаем его
 
-                if xvel > 0:  # если движется вправо
-                    self.rect.right = p.rect.left  # то не движется вправо
+                if dx < 0:                                     # если движется влево
+                    self.rect.x = p.rect.x + 32                # останавливаем его
 
-                if xvel < 0:  # если движется влево
-                    self.rect.left = p.rect.right  # то не движется влево
+                if dy > 0:                                     # если падает
+                    self.rect.y = p.rect.y - self.rect.height  # останавливается
+                    self.onGround = True                       # становится на землю
+                    self.dy = 0                                # скорость = 0
 
-                if yvel > 0:  # если падает вниз
-                    self.rect.bottom = p.rect.top  # то не падает вниз
-                    self.onGround = True  # и становится на что-то твердое
-                    self.yvel = 0  # и энергия падения пропадает
+                if dy < 0:                                     # если движется вверх
+                    self.rect.y = p.rect.y + 32                # останавливатся
+                    self.dy = 0
 
-                if yvel < 0:  # если движется вверх
-                    self.rect.top = p.rect.bottom  # то не движется вверх
-                    self.yvel = 0  # и энергия прыжка пропадает
+
+# Второй персонаж, наследуется от первого
+class Player2(Player1):
+    # ---***--- переписываем управление под другие клавиши ---***---#
+    def keyboard(self):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_a]:
+            self.dx = -256
+            self.orientation = "left"
+        if keys[pygame.K_d]:
+            self.dx = 256
+            self.orientation = "right"
+        if keys[pygame.K_w] and self.onGround:
+            self.dy = -260
+            self.onGround = False
+
+
+
